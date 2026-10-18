@@ -1,0 +1,5 @@
+build/
+.DS_Store
+media/welcome-jay-v1.mp4
+tools/render-animation.swift
+tools/verify-preview.cjs

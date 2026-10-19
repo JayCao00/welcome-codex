@@ -1,11 +1,49 @@
+<div align="center">
+
 # welcome-codex
 
-macOS Codex 启动动画：多彩手写 `welcome Jay`，连续汇成图标后进入应用。
+**为每一次 Codex 冷启动，留一段多彩的开场。**
 
-当前版本：**2.4.1**。支持窗口尺寸和全屏记忆、原生窗口圆角、无声播放，
-仅在完全退出应用后重新启动时播放。退出 Codex 后，动画和状态栏图标同步关闭。
+<a href="media/welcome-jay.mp4"><img src="media/readme-preview.gif" alt="welcome Jay 多彩手写、丝带汇成图标的完整启动动画" width="800"></a>
 
-[查看最新动画预览（4K / 60 fps / 12.75 秒）](media/welcome-jay.mp4)
+<br>
+
+![macOS](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)
+![Version](https://img.shields.io/badge/version-2.4.1-167DAD)
+![Swift](https://img.shields.io/badge/Swift-AppKit-F05138?logo=swift&logoColor=white)
+![Rendering](https://img.shields.io/badge/Canvas-Vector-25855A)
+
+多彩手写 `welcome Jay`，流动成结，轻柔放大，再进入 Codex。<br>
+原生窗口适配 · 仅冷启动播放 · 全程无声
+
+[观看效果](#动画效果) · [安装](#安装) · [使用](#使用) · [常见问题](#常见问题)
+
+**简体中文** · [English](README_EN.md) · [日本語](README_JA.md)
+
+</div>
+
+---
+
+## 动画效果
+
+`welcome` 写完后稍作停顿，再写出 `Jay`。最后一笔延伸为彩色丝带，连续汇成图标，随后柔和放大并淡入应用。
+
+| 细节 | 表现 |
+| --- | --- |
+| 多彩手写 | 彩虹色笔触，带柔和透光与移动高光 |
+| 连续转场 | 手写、丝带、图标沿连续路径衔接 |
+| 清晰放大 | 按屏幕原生像素密度绘制矢量轮廓 |
+| 窗口适配 | 记住位置、尺寸和全屏状态，启动时校准实际窗口 |
+| 克制播放 | 0.8 倍速，共 12.75 秒，无音乐 |
+| 启动行为 | 完全退出后再打开才播放，重复点击不重播 |
+
+[查看 4K / 60 fps 原片](media/welcome-jay.mp4)。上方 GIF 为缩小预览，实际动画由本地 Canvas 实时绘制，不播放视频。
+
+## 安装
+
+需要 **macOS 13+** 和包含 Swift 的 **Xcode Command Line Tools**。未安装编译工具时，先运行 `xcode-select --install`。
+
+> 当前目标应用是 `/Applications/ChatGPT.app`，bundle identifier 为 `com.openai.codex`。如果你的 Codex 安装路径不同，先调整 [macos/main.swift](macos/main.swift) 和 [scripts/build.sh](scripts/build.sh) 中的路径。
 
 ```sh
 git clone https://github.com/JayCao00/welcome-codex.git
@@ -14,155 +52,131 @@ zsh scripts/build.sh
 zsh scripts/install.sh
 ```
 
-本版本保留 `welcome Jay` 的个性化文字。需要 macOS 13+ 和 Xcode Command Line Tools。
-当前目标应用是 `/Applications/ChatGPT.app`，其 bundle identifier 为 `com.openai.codex`。
-若你的 Codex 应用路径不同，需要先调整 `macos/main.swift` 和 `scripts/build.sh` 中的应用路径。
+构建使用本机临时签名，无需下载额外运行时。安装后创建：
 
-Native macOS launch animation for Codex, targeting `/Applications/ChatGPT.app`.
+| 项目 | 位置 |
+| --- | --- |
+| 启动器 | `~/Applications/ChatGPT Welcome Jay.app` |
+| 桌面快捷方式 | `~/Desktop/ChatGPT Welcome Jay.app` |
+| 启动监听 | `~/Library/LaunchAgents/local.jay.welcome.plist` |
 
-## Use
+## 使用
 
-Open `~/Applications/ChatGPT Welcome Jay.app` or its desktop shortcut. It draws
-the animation while ChatGPT opens, then fades into the real application.
-Escape or Command+. skips the animation.
+正常打开 Codex 即可，也可以使用安装的启动器或桌面快捷方式。
 
-The animation uses the last Codex main-window size and position, with the scene
-scaled proportionally inside it. A normal window gets macOS native rounded corners and a
-shadow; a previously fullscreen window gets a fullscreen animation on its saved
-display. Maximized windows use the display's work area. If a display disconnects,
-the animation is fitted onto a connected display.
+- **完全退出后重开**：播放一次动画，再切入应用。
+- **应用已经运行**：只激活窗口，不重播动画。
+- **跳过动画**：按 `Escape` 或 `Command + .`。
+- **手动重播**：Codex 运行时，在菜单栏闪光图标中选择 `Play welcome Jay`。
+- **退出 Codex**：动画和菜单栏图标同步关闭，后台监听等待下次启动。
 
-The watcher remembers actual visible window geometry and fullscreen state in
-`~/Library/Application Support/Welcome Jay/window-placement.json`. It samples
-window bounds every 0.5 seconds while Codex is active, and on application
-activation changes. This record takes priority over Codex's normal-window bounds,
-which can lag behind maximization. On first installation, Codex's local
-`electron-main-window-bounds` record is used as a fallback. During playback, the
-overlay checks the actual restored window every 0.1 seconds and matches its size,
-position, and fullscreen state after two stable samples. It reads window metadata,
-not screen contents. Install the
-watcher before changing fullscreen state so it can remember that state.
+普通窗口使用 macOS 原生圆角；铺满窗口匹配桌面可用区域；系统全屏匹配对应显示器。启动时也会校准实际窗口，避免恢复铺满时偏移。
 
-The installed user LaunchAgent plays the animation only when the official
-ChatGPT application starts a new process after being completely quit.
-Switching windows, clicking its icon again, or reopening a closed window while
-ChatGPT is still running does not play the animation. The custom launcher also
-just activates ChatGPT when it is already running.
+## 常见问题
 
-The small sparkle menu bar item appears only while Codex is running and can
-replay the animation or quit the watcher. Quitting Codex removes this item and
-closes any active animation immediately. The invisible launch listener remains
-available for the next cold launch.
-Quitting it stops monitoring for the current login session. Uninstall to stop
-monitoring permanently. The watcher does not play an animation merely because
-it starts at login.
+<details>
+<summary><strong>需要修改原版 Codex 或授予屏幕录制权限吗？</strong></summary>
 
-## Visuals
+不需要。启动器不修改原应用、Dock 图标或聊天数据，也不需要辅助功能或屏幕录制权限。它读取窗口位置等系统元数据，不读取屏幕内容。运行时不发送网络请求，不调用 API。
 
-Version 2 draws the entire sequence from vector paths at the display's native
-pixel density. The lettering has distinct lowercase w/e/m shapes and a vivid
-rainbow palette inspired by Jay's supplied Apple event clip, with soft tinted
-transmission and a moving reflection instead of a hard white outline. Jay's
-final pen stroke is the start of the ribbon. Each strand is one continuous
-arc-length path through the wave, its lead-in and its final knot petal; the
-head curls into the knot while the tail follows the same path. The growing
-centerlines are clipped to the exact thin knot silhouette throughout formation.
-Incoming strands and the knot share one color pass to avoid layered junctions.
-The final knot does not fade in. All contours are rendered at native resolution
-during zoom; no screen-recording pixels or cached textures are enlarged.
+</details>
 
-The sequence plays at 0.8 times the original speed and lasts 12.75 seconds.
-After welcome finishes at 3.4s, it pauses for about 0.69s before Jay begins.
-Writing ends at 6.25s and the title holds until 6.625s. The ribbon flows into
-the knot by about 10.81s; the complete knot holds from 10.875s to about 11.19s,
-then gently enlarges to 1.75 times its size before the app handoff.
-The complete icon stays within the frame throughout the zoom.
+<details>
+<summary><strong>为什么关掉窗口再打开，没有动画？</strong></summary>
 
-`preview.html` opens the same live vector animation in a browser without a
-server. It loops in a browser; the native launcher plays it once. Version 2 is
-silent. Its visuals and timing are defined in `animation.js`, with knot routes
-in `knot-paths.js`.
+关闭窗口不等于退出应用。只有完全退出 Codex（`Command + Q`），再打开新进程时才会播放。监听器在登录时启动，不会单独触发动画。菜单中的 `Quit Welcome Jay` 仅停止当前登录会话的监听。
 
-`media/welcome-jay.mp4` is an optional 4K 60 fps video export for review. It is
-not used by the launcher. Original reference recordings and earlier exports
-are not included in this repository.
+</details>
 
-## Build And Install
+<details>
+<summary><strong>窗口和全屏记录保存在哪里？</strong></summary>
 
-Requires macOS 13+, Command Line Tools with Swift, and ChatGPT at the path above.
-There are no downloaded runtime dependencies, API calls, or network requests.
-Rendering uses the macOS system WebKit engine and a local Canvas scene.
+保存在 `~/Library/Application Support/Welcome Jay/window-placement.json`。Codex 活跃时每 0.5 秒采样，应用切换时也会记录。首次安装可回退读取 Codex 的 `electron-main-window-bounds`；播放时每 0.1 秒检查实际窗口，连续两次稳定后校准。显示器断开时会适配可用显示器。建议先安装监听器，再调整并使用全屏状态。
 
-```sh
-zsh scripts/build.sh
-zsh scripts/install.sh
-```
+</details>
 
-The packaged app includes `preview.html`, `animation.js`, `knot-paths.js`, and
-the third-party outline license. The build is locally ad hoc signed. Rebuild and reinstall after
-editing the scene. A video export is not needed to build or run the app.
+<details>
+<summary><strong>可以改文字或动画吗？</strong></summary>
 
-Optional 4K video export (requires Node.js, Playwright, and Google Chrome):
+当前版本固定为个性化的 `welcome Jay`，尚无姓名输入设置。动画和手写路径定义在 [animation.js](animation.js)，图标路径在 [knot-paths.js](knot-paths.js)。修改后重新构建、安装即可。直接打开 [preview.html](preview.html) 可循环预览，无需服务器；原生启动器只播放一次。
 
-```sh
-zsh scripts/render.sh
-```
+</details>
 
-Set `NODE_BINARY` and `NODE_PATH` when those tools are not on the normal path.
-The export script also detects this machine's bundled Codex Node runtime.
+<details>
+<summary><strong>动画结束是否代表 Codex 已加载完成？</strong></summary>
 
-`tools/trace-knot.py` is an optional asset-authoring helper for regenerating
-`knot-paths.js` from a 1024px alpha rendering of the licensed SVG at
-`build/knot-mask.png`. It requires Python, NumPy, Pillow, SciPy, and scikit-image;
-these are not required to build or run the app.
+动画按固定时长播放，不检测应用加载进度。较慢的机器上，交接后应用可能仍在加载。如果 WebKit 卡住，20 秒保护计时器会关闭动画；目标应用启动失败时会显示系统提示。
 
-Installation creates:
+</details>
 
-- `~/Applications/ChatGPT Welcome Jay.app`
-- `~/Desktop/ChatGPT Welcome Jay.app` (symbolic link)
-- `~/Library/LaunchAgents/local.jay.welcome.plist`
-
-The original ChatGPT bundle, Dock entry, and chat data are not modified.
-The launcher observes macOS application events and uses a local file lock to
-prevent simultaneous splash windows. It requires neither Accessibility nor
-Screen Recording access. It plays in the current Space at the saved window
-position or on the saved fullscreen display. Geometry sampling pauses when
-Codex is not active; startup playback still uses application launch events.
-
-## Remove
+## 卸载
 
 ```sh
 zsh scripts/uninstall.sh
 ```
 
-This removes the LaunchAgent and desktop link and moves this project's
-installed launcher to Trash. Project source and video remain in this folder.
+移除启动监听和桌面链接，并将本项目安装的启动器移到废纸篓。项目源码和视频保留。
 
-## Verification
+## 开发与验证
 
-Build and native signature checks are performed by `scripts/build.sh`.
-`tools/verify-vector.cjs` checks live playback, multiple color ranges, stage
-continuity, and screenshots on desktop, mobile, and a 5K Retina canvas.
-`tools/inspect-video.swift` extracts frames for video export inspection.
-`tools/verify-startup.cjs` uses a temporary native fixture app to check cold
-launch, activation without replay, a custom launcher reopening a running app,
-saved window bounds, fullscreen capture, and playback after quit/relaunch
-without quitting the user's real ChatGPT. `tools/verify-placement.cjs` checks
-coordinate conversion, maximized bounds, fullscreen sizing, disconnected
-displays, and missing or partially written Codex state.
-Native playback, skip, cold startup, and handoff need a live macOS
-session. A 20-second watchdog closes the scene if WebKit stalls.
+<details>
+<summary><strong>展开查看仓库结构、媒体导出与验证工具</strong></summary>
 
-The monitor does not inspect application loading state. The animation draws
-for its fixed duration and hands focus to the application, which may still
-be loading on a slow machine. If ChatGPT cannot launch, a system alert appears.
+```text
+welcome-codex/
+├── README.md / README_EN.md / README_JA.md
+├── animation.js           # 手写、色彩与动画时间线
+├── knot-paths.js          # 图标与连续丝带路径
+├── preview.html           # 本地动画预览
+├── macos/                # Swift 原生窗口与生命周期监听
+├── scripts/              # 构建、安装、卸载与视频导出
+├── tools/                # 导出与回归验证工具
+└── media/                # README 动图和 4K 视频
+```
 
-## Reference
+可选的 4K 视频导出需要 Node.js、Playwright 和 Google Chrome：
 
-The architecture takes inspiration from
-[dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot), especially
-its macOS native playback and workspace event integration. No repository code
-or bundled media was copied. Version 2 redraws the visual sequence using Jay's
-`案例.MP4` and `开头Apple event 2021.MP4` as motion and color references. The
-source recordings remain untouched. The knot centerline proportions are adapted
-from Bootstrap Icons under MIT; see `THIRD_PARTY_NOTICES.md`. This is a local customization.
+```sh
+zsh scripts/render.sh
+```
+
+必要时通过 `NODE_BINARY` 和 `NODE_PATH` 指定工具位置。脚本也会检测本机 Codex 随附的 Node 运行时。视频不参与原生启动流程。
+
+使用 macOS 自带框架重新导出 README 动图：
+
+```sh
+swift tools/export-readme.swift media/welcome-jay.mp4 media/readme-preview.gif
+```
+
+| 工具 | 验证范围 |
+| --- | --- |
+| `scripts/build.sh` | 原生编译与签名检查 |
+| `tools/verify-placement.cjs` | 坐标、铺满、全屏、圆角、失效显示器和异常状态文件 |
+| `tools/verify-startup.cjs` | 独立测试应用的冷启动、不重播、退出清理和实际窗口对齐 |
+| `tools/verify-vector.cjs` | 多色笔触、动画连续性、桌面及移动尺寸和 Retina 渲染 |
+| `tools/inspect-video.swift` | 视频轨道信息和逐秒帧提取 |
+
+原生测试需要活跃的 macOS 桌面会话。启动测试使用独立应用，无需退出真实 Codex。
+
+`tools/trace-knot.py` 是可选的路径制作工具，依赖 NumPy、Pillow、SciPy 和 scikit-image；这些不是构建或运行依赖。
+
+</details>
+
+## 参考与致谢
+
+- [dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot)：原生启动播放与应用事件监听的架构思路。
+- Jay 提供的案例视频与 Apple Event 2021 开场：动画节奏、手写色彩和流动感的视觉参考；原始录屏未随仓库分发。
+- [Bootstrap Icons](https://icons.getbootstrap.com/)：图标轮廓比例参考，遵循其 MIT 许可，详见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+
+这是个人定制项目，与 OpenAI 或 Apple 无隶属关系。版本记录见 [CHANGELOG](CHANGELOG.md)。
+
+---
+
+<div align="center">
+
+**welcome Jay.**<br>
+<sub>从一笔彩色手写，开始下一次创作。</sub>
+
+[简体中文](README.md) · [English](README_EN.md) · [日本語](README_JA.md)
+
+</div>

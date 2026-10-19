@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.1
+
+- Prefer the last observed window frame over stale Electron normal-window bounds.
+- Match the actual restored Codex window during startup, including delayed maximization and fullscreen changes.
+- Reapply the target frame after AppKit presents the animation window to prevent automatic position offsets.
+- Resize the animation content and native window outline together.
+
 ## 2.4.0
 
 - Rainbow handwriting flows continuously into the vector knot.

@@ -22,6 +22,9 @@ async function until(predicate, timeout = 20000) {
   const stateFile = path.join(directory, 'state.json');
   const placementFile = path.join(directory, 'placement.json');
   const fullscreenFile = path.join(directory, 'fullscreen');
+  const maximizeFile = path.join(directory, 'maximize');
+  const watcherPIDFile = path.join(directory, 'watcher.pid');
+  const probeFile = path.join(directory, 'geometry.json');
   let fixturePID, watcher, coldLauncher;
   let log = '';
   const starts = () => (log.match(/animation started/g) || []).length;
@@ -33,18 +36,34 @@ async function until(predicate, timeout = 20000) {
     await fs.cp(path.resolve('build/ChatGPT Welcome Jay.app'), watcherApp, { recursive: true });
     await fs.writeFile(path.join(fixture, 'Contents/Info.plist'), `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>local.jay.welcome.test.fixture</string><key>CFBundleExecutable</key><string>Fixture</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>`);
     const fixtureSource = path.join(directory, 'fixture.swift');
-    await fs.writeFile(stateFile, JSON.stringify({ 'electron-main-window-bounds': { x: 100, y: 100, width: 640, height: 600 } }));
+    await fs.writeFile(stateFile, JSON.stringify({ 'electron-main-window-bounds': { x: 260, y: 120, width: 700, height: 600 } }));
     await fs.writeFile(fixtureSource, `import AppKit
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 let window = NSWindow(contentRect: NSRect(x: 100,y: 100,width: 640,height: 600),styleMask: [.titled,.closable,.resizable],backing: .buffered,defer: false)
 window.collectionBehavior = [.fullScreenPrimary]
 window.title = "Welcome Jay startup test"
+window.setFrame(NSRect(x: 100,y: NSScreen.screens[0].frame.maxY-700,width: 640,height: 600),display: false)
 window.makeKeyAndOrderFront(nil)
+window.setFrame(NSRect(x: 100,y: NSScreen.screens[0].frame.maxY-700,width: 640,height: 600),display: true)
 var requestedFullscreen = false
+var requestedMaximize = false
+let launchedAt = Date()
 Timer.scheduledTimer(withTimeInterval: 0.1,repeats: true) { _ in
+    if !requestedMaximize && Date().timeIntervalSince(launchedAt) > 0.8 && FileManager.default.fileExists(atPath: ${JSON.stringify(maximizeFile)}) {
+        requestedMaximize = true; window.setFrame(NSScreen.screens[0].visibleFrame,display: true)
+    }
     if !requestedFullscreen && FileManager.default.fileExists(atPath: ${JSON.stringify(fullscreenFile)}) {
         requestedFullscreen = true; window.toggleFullScreen(nil)
+    }
+    if let pidText = try? String(contentsOfFile: ${JSON.stringify(watcherPIDFile)},encoding: .utf8),let pid = Int32(pidText),
+       let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]],
+       let info = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && ($0[kCGWindowLayer as String] as? Int) == 3 }),
+       let bounds = info[kCGWindowBounds as String] as? [String:Any],let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary) {
+        let overlay = CGRect(x: rect.minX,y: NSScreen.screens[0].frame.maxY-rect.maxY,width: rect.width,height: rect.height)
+        func values(_ frame: CGRect) -> [CGFloat] { [frame.minX,frame.minY,frame.width,frame.height] }
+        let snapshot = ["target":values(window.frame),"overlay":values(overlay),"visible":values(NSScreen.screens[0].visibleFrame)]
+        try? JSONSerialization.data(withJSONObject: snapshot).write(to: URL(fileURLWithPath: ${JSON.stringify(probeFile)}),options: .atomic)
     }
 }
 try! String(ProcessInfo.processInfo.processIdentifier).write(toFile: ${JSON.stringify(pidFile)},atomically: true,encoding: .utf8)
@@ -62,6 +81,7 @@ app.run()
     execFileSync('swiftc', ['-suppress-warnings', '-target', target, watcherSource, '-o', path.join(watcherApp, 'Contents/MacOS/WelcomeJay'), '-framework', 'AppKit', '-framework', 'WebKit']);
     for (const bundle of [fixture, watcherApp]) execFileSync('codesign', ['--force', '--sign', '-', bundle]);
     watcher = spawn(path.join(watcherApp, 'Contents/MacOS/WelcomeJay'), ['--watch']);
+    await fs.writeFile(watcherPIDFile, String(watcher.pid));
     watcher.stderr.on('data', data => { log += data; });
     await until(() => log.includes('watching '));
     assert.equal(shown(), 0, 'Status item must be absent while the target is not running');
@@ -74,11 +94,18 @@ app.run()
     }
     const firstLaunchAt = Date.now();
     await launchFixture();
+    await until(async () => {
+      try {
+        const probe = JSON.parse(await fs.readFile(probeFile, 'utf8'));
+        return probe.target[2] === 640 && probe.target[3] === 600
+          && JSON.stringify(probe.overlay) === JSON.stringify(probe.target);
+      } catch { return false; }
+    }, 5000);
     await until(() => finishes() === 1);
     assert.ok(Date.now() - firstLaunchAt >= 12750, 'Native playback must last for the slower 0.8x timeline');
     assert.equal(shown(), 1, 'Status item must appear when the target launches');
     assert.equal(starts(), 1, 'Cold startup should play exactly once');
-    assert.match(log, /animation started frame=100,\d+,640,600 fullscreen=no/, 'Normal startup must match saved Codex bounds');
+    assert.match(log, /animation (?:started|matched) frame=\d+,\d+,640,600 fullscreen=no/, 'Actual window must override stale Codex bounds');
     await until(async () => {
       try { const saved = JSON.parse(await fs.readFile(placementFile, 'utf8')); return saved.fullScreen === false; }
       catch { return false; }
@@ -101,7 +128,18 @@ app.run()
     await until(() => hidden() === 1, 3000);
     await fs.rm(pidFile);
     await delay(500);
+    await fs.writeFile(maximizeFile, 'maximize after launch');
+    await fs.rm(probeFile, { force: true });
     await launchFixture();
+    await until(() => starts() === 2);
+    await until(async () => {
+      try {
+        const probe = JSON.parse(await fs.readFile(probeFile, 'utf8'));
+        return JSON.stringify(probe.target) === JSON.stringify(probe.visible)
+          && JSON.stringify(probe.overlay) === JSON.stringify(probe.target);
+      } catch { return false; }
+    }, 5000);
+    assert.equal(finishes(), 1, 'Delayed maximization must match while the animation is still visible');
     await until(() => finishes() === 2);
     assert.equal(starts(), 2, 'A new process after quitting should play again exactly once');
     assert.equal(shown(), 2, 'Status item must return on relaunch');
@@ -113,11 +151,21 @@ app.run()
     process.kill(fixturePID, 'SIGTERM'); fixturePID = undefined;
     await until(() => hidden() === 2, 3000);
     await fs.rm(pidFile);
+    await fs.rm(maximizeFile);
     await delay(500);
+    await fs.rm(probeFile, { force: true });
     await launchFixture();
+    await until(async () => {
+      try {
+        const saved = JSON.parse(await fs.readFile(placementFile, 'utf8'));
+        const probe = JSON.parse(await fs.readFile(probeFile, 'utf8'));
+        return saved.fullScreen && probe.target[0] === 0 && probe.target[1] === 0
+          && JSON.stringify(probe.overlay) === JSON.stringify(probe.target);
+      } catch { return false; }
+    }, 8000);
     await until(() => finishes() === 3);
     assert.equal(starts(), 3);
-    assert.match(log.split('handoff complete')[2], /animation started frame=.* fullscreen=yes/, 'Full screen must survive quit and relaunch');
+    assert.match(log.split('handoff complete')[2], /animation (?:started|matched) frame=.* fullscreen=yes/, 'Full screen must survive quit and relaunch');
     process.kill(fixturePID, 'SIGTERM'); fixturePID = undefined;
     await until(() => hidden() === 3, 3000);
     await fs.rm(pidFile);
@@ -138,7 +186,11 @@ app.run()
     await until(() => coldLauncher.exitCode !== null && hidden() === 5, 3000);
     assert.equal(coldLauncher.exitCode, 0);
     assert.match(coldLog, /handoff complete/, 'Quitting the target must also close a custom-launcher splash');
-    console.log('PASS: status item follows launch and quit; quitting closes watcher and custom-launcher splashes; 0.8x native playback; saved window bounds; fullscreen capture and relaunch; activation no replay.');
+    console.log('PASS: stale saved bounds corrected; delayed maximization has identical target and overlay WindowServer frames during playback; fullscreen capture and relaunch; status item follows launch and quit; quitting closes splashes; 0.8x playback; activation no replay.');
+  } catch (error) {
+    console.error(log);
+    console.error('Last geometry:', await fs.readFile(probeFile, 'utf8').catch(() => 'unavailable'));
+    throw error;
   } finally {
     if (fixturePID) { try { process.kill(fixturePID, 'SIGTERM'); } catch {} }
     if (coldLauncher && coldLauncher.exitCode === null) coldLauncher.kill();

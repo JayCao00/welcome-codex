@@ -10,6 +10,7 @@ const { execFileSync } = require('node:child_process');
     const state = path.join(directory, 'state.json');
     const source = (await fs.readFile('macos/main.swift', 'utf8'))
       .replace('FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/.codex-global-state.json")', `URL(fileURLWithPath: ${JSON.stringify(state)})`)
+      .replace('FileManager.default.urls(for: .applicationSupportDirectory,in: .userDomainMask)[0].appendingPathComponent("Welcome Jay/window-placement.json")', `URL(fileURLWithPath: ${JSON.stringify(path.join(directory, 'placement.json'))})`)
       .split('let delegate = Launcher()')[0];
     const checks = `
 func check(_ condition: @autoclosure () -> Bool,_ message: String) {
@@ -24,6 +25,13 @@ check(normalWindow.styleMask.contains(.titled) && normalWindow.styleMask.contain
 check(normalWindow.contentView!.bounds.size == expected.size,"Native titlebar must not shrink the animation content")
 let fullWindow = SplashWindow(frame: screen.frame,fullScreen: true)
 check(fullWindow.frame == screen.frame && fullWindow.styleMask == .borderless,"Fullscreen animation must have no rounded window chrome")
+let liveFull = WindowPlacement(frame: screen.frame,screenFrame: screen.frame,displayID: WindowPlacement.displayID(screen),fullScreen: true)
+normalWindow.match(liveFull)
+check(normalWindow.frame == screen.frame && normalWindow.styleMask == .borderless,"A restored fullscreen window must update both frame and chrome")
+let liveMax = WindowPlacement(frame: visible,screenFrame: screen.frame,displayID: WindowPlacement.displayID(screen),fullScreen: false)
+normalWindow.match(liveMax)
+check(normalWindow.frame == visible && normalWindow.styleMask.contains(.titled),"Leaving fullscreen for a maximized window must match its exact outer frame")
+check(normalWindow.contentView!.bounds.size == visible.size,"Live placement changes must also resize animation content")
 func writeState(_ maximized: Bool) {
     let bounds: [String:Any] = ["x": expected.minX,"y": screen.frame.maxY-expected.maxY,
         "width": expected.width,"height": expected.height,"isMaximized": maximized]
@@ -31,6 +39,13 @@ func writeState(_ maximized: Bool) {
 }
 writeState(false)
 check(WindowPlacement.fromCodex()!.frame == expected,"Electron coordinate conversion must preserve position and size")
+let memory = WindowMemory()
+memory.saved = liveMax
+check(memory.placement()!.frame == visible,"Last observed maximized geometry must take priority over stale Electron normal bounds")
+memory.saved = liveFull
+check(memory.placement()!.fullScreen,"Remembered fullscreen must survive stale Electron bounds")
+memory.saved = nil
+check(memory.placement()!.frame == expected,"A first installation must fall back to Electron bounds")
 writeState(true)
 check(WindowPlacement.fromCodex()!.frame == visible,"Maximized windows must use the visible work area")
 let fullscreen = WindowPlacement(frame: expected,screenFrame: screen.frame,displayID: WindowPlacement.displayID(screen),fullScreen: true)
@@ -42,7 +57,7 @@ try! Data("{}".utf8).write(to: geometryStateURL)
 check(WindowPlacement.fromCodex() == nil,"Missing window state must fall back safely")
 try! Data("{broken".utf8).write(to: geometryStateURL)
 check(WindowPlacement.fromCodex() == nil,"Partial JSON writes must fall back safely")
-print("PASS: native window chrome and content size; normal placement; maximized; fullscreen; disconnected display; missing and partial state.")
+print("PASS: native window chrome and content size; live fullscreen/maximized resizing; stale Electron state precedence; normal placement; disconnected display; missing and partial state.")
 `;
     const main = path.join(directory, 'main.swift');
     await fs.writeFile(main, source + checks);

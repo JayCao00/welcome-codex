@@ -2,7 +2,7 @@
 
 macOS Codex 启动动画：多彩手写 `welcome Jay`，连续汇成图标后进入应用。
 
-当前版本：**2.4.0**。支持窗口尺寸和全屏记忆、原生窗口圆角、无声播放，
+当前版本：**2.4.1**。支持窗口尺寸和全屏记忆、原生窗口圆角、无声播放，
 仅在完全退出应用后重新启动时播放。退出 Codex 后，动画和状态栏图标同步关闭。
 
 [查看最新动画预览（4K / 60 fps / 12.75 秒）](media/welcome-jay.mp4)
@@ -32,11 +32,15 @@ shadow; a previously fullscreen window gets a fullscreen animation on its saved
 display. Maximized windows use the display's work area. If a display disconnects,
 the animation is fitted onto a connected display.
 
-Normal bounds come from Codex's local `electron-main-window-bounds` record.
-The watcher also remembers visible window geometry and fullscreen state in
+The watcher remembers actual visible window geometry and fullscreen state in
 `~/Library/Application Support/Welcome Jay/window-placement.json`. It samples
 window bounds every 0.5 seconds while Codex is active, and on application
-activation changes. It reads window metadata, not screen contents. Install the
+activation changes. This record takes priority over Codex's normal-window bounds,
+which can lag behind maximization. On first installation, Codex's local
+`electron-main-window-bounds` record is used as a fallback. During playback, the
+overlay checks the actual restored window every 0.1 seconds and matches its size,
+position, and fullscreen state after two stable samples. It reads window metadata,
+not screen contents. Install the
 watcher before changing fullscreen state so it can remember that state.
 
 The installed user LaunchAgent plays the animation only when the official

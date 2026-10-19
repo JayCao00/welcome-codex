@@ -58,10 +58,11 @@ struct WindowPlacement: Codable, Equatable {
 final class WindowMemory {
     var saved = (try? Data(contentsOf: placementURL)).flatMap { try? JSONDecoder().decode(WindowPlacement.self,from: $0) }
 
-    func capture(_ running: NSRunningApplication) {
-        guard !running.isTerminated,let primary = NSScreen.screens.first else { return }
-        let normal = WindowPlacement.fromCodex()
-        let windows = CGWindowListCopyWindowInfo([.optionAll,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]] ?? []
+    func livePlacement(_ running: NSRunningApplication) -> WindowPlacement? {
+        guard !running.isTerminated,let primary = NSScreen.screens.first else { return nil }
+        // WindowServer lists front to back. The restored visible window is more
+        // reliable than Electron's normal bounds while zoom/fullscreen restores.
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]] ?? []
         let candidates: [(CGRect,NSScreen,Bool)] = windows.compactMap { info in
             guard (info[kCGWindowOwnerPID as String] as? Int32) == running.processIdentifier,
                   (info[kCGWindowLayer as String] as? Int) == 0,
@@ -71,29 +72,26 @@ final class WindowMemory {
             let frame = CGRect(x: rect.minX,y: primary.frame.maxY-rect.maxY,width: rect.width,height: rect.height)
             guard let screen = NSScreen.screens.max(by: { WindowPlacement.intersectionArea(frame,$0.frame) < WindowPlacement.intersectionArea(frame,$1.frame) }) else { return nil }
             let full = abs(frame.minX-screen.frame.minX) < 3 && abs(frame.width-screen.frame.width) < 3
-                && abs(frame.minY-screen.frame.minY) < 3 && abs(frame.maxY-screen.frame.maxY) <= max(3,screen.safeAreaInsets.top)
+                && abs(frame.minY-screen.frame.minY) < 3 && abs(frame.maxY-screen.frame.maxY) <= max(3,screen.safeAreaInsets.top+3)
             return (frame,screen,full)
         }
-        let best = candidates.min { a,b in
-            func score(_ candidate: (CGRect,NSScreen,Bool)) -> CGFloat {
-                guard let normal = normal else { return -candidate.0.width*candidate.0.height }
-                let target = candidate.2 ? candidate.1.frame : normal.frame
-                return abs(candidate.0.width-target.width)+abs(candidate.0.height-target.height)
-                    + abs(candidate.0.midX-target.midX)+abs(candidate.0.midY-target.midY)
-            }
-            return score(a) < score(b)
-        }
-        guard let (frame,screen,fullScreen) = best else { return }
-        let placement = WindowPlacement(frame: frame,screenFrame: screen.frame,displayID: WindowPlacement.displayID(screen),fullScreen: fullScreen)
+        guard let (frame,screen,fullScreen) = candidates.first else { return nil }
+        return WindowPlacement(frame: frame,screenFrame: screen.frame,displayID: WindowPlacement.displayID(screen),fullScreen: fullScreen)
+    }
+
+    func remember(_ placement: WindowPlacement) {
         guard placement != saved,let data = try? JSONEncoder().encode(placement) else { return }
         saved = placement
         try? FileManager.default.createDirectory(at: placementURL.deletingLastPathComponent(),withIntermediateDirectories: true)
         try? data.write(to: placementURL,options: .atomic)
     }
 
+    func capture(_ running: NSRunningApplication) {
+        if let placement = livePlacement(running) { remember(placement) }
+    }
+
     func placement() -> WindowPlacement? {
-        if let saved = saved,saved.fullScreen { return saved.resolved() }
-        return (WindowPlacement.fromCodex() ?? saved)?.resolved()
+        return (saved ?? WindowPlacement.fromCodex())?.resolved()
     }
 }
 
@@ -110,9 +108,20 @@ final class SplashWindow: NSWindow {
             standardWindowButton(button)?.isHidden = true
         }
         isMovable = false
+        isRestorable = false
         backgroundColor = .black; isOpaque = true
         hasShadow = !fullScreen
         setFrame(frame,display: false)
+    }
+
+    func match(_ placement: WindowPlacement) {
+        let mask: NSWindow.StyleMask = placement.fullScreen ? [.borderless] : [.titled,.fullSizeContentView]
+        if styleMask != mask { styleMask = mask }
+        for button in [NSWindow.ButtonType.closeButton,.miniaturizeButton,.zoomButton] {
+            standardWindowButton(button)?.isHidden = true
+        }
+        hasShadow = !placement.fullScreen
+        setFrame(placement.frame,display: true)
     }
 }
 
@@ -128,6 +137,9 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
     var lockFile: Int32 = -1
     let windowMemory = WindowMemory()
     var geometryTimer: Timer?
+    var splashGeometryTimer: Timer?
+    var splashPlacement: WindowPlacement?
+    var pendingPlacement: WindowPlacement?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         app.setActivationPolicy(.accessory)
@@ -238,7 +250,11 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
             return
         }
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let placement = windowMemory.placement()
+        let running = target ?? NSWorkspace.shared.runningApplications.first {
+            !$0.isTerminated && $0.bundleURL?.standardizedFileURL == targetURL.standardizedFileURL
+        }
+        let placement = running.flatMap { windowMemory.livePlacement($0) } ?? windowMemory.placement()
+        if !preview { target = running }
         let frame = placement?.frame ?? screen.visibleFrame.insetBy(dx: screen.visibleFrame.width*0.1,dy: screen.visibleFrame.height*0.1)
         let fullScreen = placement?.fullScreen ?? false
         let cache = FileManager.default.urls(for: .cachesDirectory,in: .userDomainMask)[0].appendingPathComponent("local.jay.welcome",isDirectory: true)
@@ -264,9 +280,16 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         view.navigationDelegate = self
         win.contentView = view
         window = win; webView = view
+        splashPlacement = placement; pendingPlacement = nil
+        splashGeometryTimer = Timer.scheduledTimer(withTimeInterval: 0.1,repeats: true) { [weak self] _ in
+            self?.matchTargetWindow()
+        }
         view.loadFileURL(scene,allowingReadAccessTo: scene.deletingLastPathComponent())
         win.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
+        // AppKit can reposition a newly presented titled window. Reapply the
+        // target's outer frame after presentation so no sidebar is exposed.
+        win.setFrame(frame,display: true)
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 || (event.modifierFlags.contains(.command) && event.characters == ".") {
                 self?.finish(); return nil
@@ -287,10 +310,26 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         NSLog("Welcome Jay: animation started frame=%.0f,%.0f,%.0f,%.0f fullscreen=%@",frame.minX,frame.minY,frame.width,frame.height,fullScreen ? "yes" : "no")
     }
 
+    func matchTargetWindow() {
+        guard active,!finishing,!preview,
+              let running = target,!running.isTerminated,
+              let placement = windowMemory.livePlacement(running) else { return }
+        // Require two identical samples so intermediate macOS restore frames
+        // do not make the animation follow every step of a window transition.
+        defer { pendingPlacement = placement }
+        guard placement == pendingPlacement else { return }
+        windowMemory.remember(placement)
+        guard placement != splashPlacement || window?.frame != placement.frame else { return }
+        window?.match(placement)
+        splashPlacement = placement
+        NSLog("Welcome Jay: animation matched frame=%.0f,%.0f,%.0f,%.0f fullscreen=%@",placement.frame.minX,placement.frame.minY,placement.frame.width,placement.frame.height,placement.fullScreen ? "yes" : "no")
+    }
+
     func finish(activateTarget: Bool = true,animated: Bool = true) {
         guard active,!finishing else { return }
         finishing = true
         safetyTimer?.invalidate(); safetyTimer = nil
+        splashGeometryTimer?.invalidate(); splashGeometryTimer = nil
         if let monitor = eventMonitor { NSEvent.removeMonitor(monitor) }; eventMonitor = nil
         webView?.evaluateJavaScript("window.WelcomeJay?.pause()",completionHandler: nil)
         if !preview && activateTarget {

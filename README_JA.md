@@ -9,7 +9,7 @@
 <br>
 
 ![macOS](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.4.1-167DAD)
+![Version](https://img.shields.io/badge/version-2.4.3-167DAD)
 ![Swift](https://img.shields.io/badge/Swift-AppKit-F05138?logo=swift&logoColor=white)
 ![Rendering](https://img.shields.io/badge/Canvas-Vector-25855A)
 
@@ -70,7 +70,7 @@ zsh scripts/install.sh
 - **手動で再生**：Codex 実行中に、メニューバーのきらめきアイコンから `Play welcome Jay` を選びます。
 - **Codex を終了**：アニメーションとメニューバーのアイコンが消えます。バックグラウンドの監視は次の起動を待ちます。
 
-通常のウインドウは macOS 標準の角丸、最大化時は画面の作業領域、システムのフルスクリーン時は保存されたディスプレイに合わせます。起動後に最大化される場合も、実際のウインドウを確認して位置を補正します。
+通常のウインドウは macOS 標準の角丸、最大化時は画面の作業領域に合わせます。フルスクリーン再生はメニューバー、Dock、ノッチの安全領域を含む画面全体を覆います。再生中はシステムバーを一時的に自動非表示にし、終了またはスキップ時に元の表示設定に戻します。Codex がフルスクリーンの Space を復元する間は、保存済みの全画面状態を維持します。
 
 ## よくある質問
 

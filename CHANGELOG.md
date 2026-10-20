@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.3
+
+- Cover the full display, including the menu bar, Dock, and notch safe area, for fullscreen playback.
+- Temporarily auto-hide system bars during fullscreen playback and restore presentation options on handoff or exit.
+- Preserve remembered fullscreen while Codex restores its fullscreen Space during a cold launch.
+- Keep maximized window playback within the desktop work area.
+
 ## 2.4.1
 
 - Prefer the last observed window frame over stale Electron normal-window bounds.

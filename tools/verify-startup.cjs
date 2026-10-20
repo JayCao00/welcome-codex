@@ -53,16 +53,21 @@ Timer.scheduledTimer(withTimeInterval: 0.1,repeats: true) { _ in
     if !requestedMaximize && Date().timeIntervalSince(launchedAt) > 0.8 && FileManager.default.fileExists(atPath: ${JSON.stringify(maximizeFile)}) {
         requestedMaximize = true; window.setFrame(NSScreen.screens[0].visibleFrame,display: true)
     }
-    if !requestedFullscreen && FileManager.default.fileExists(atPath: ${JSON.stringify(fullscreenFile)}) {
+    if !requestedFullscreen && Date().timeIntervalSince(launchedAt) > 0.8 && FileManager.default.fileExists(atPath: ${JSON.stringify(fullscreenFile)}) {
         requestedFullscreen = true; window.toggleFullScreen(nil)
     }
     if let pidText = try? String(contentsOfFile: ${JSON.stringify(watcherPIDFile)},encoding: .utf8),let pid = Int32(pidText),
        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]],
-       let info = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && ($0[kCGWindowLayer as String] as? Int) == 3 }),
+       let info = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && ($0[kCGWindowLayer as String] as? Int ?? 0) >= 3 }),
        let bounds = info[kCGWindowBounds as String] as? [String:Any],let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary) {
         let overlay = CGRect(x: rect.minX,y: NSScreen.screens[0].frame.maxY-rect.maxY,width: rect.width,height: rect.height)
         func values(_ frame: CGRect) -> [CGFloat] { [frame.minX,frame.minY,frame.width,frame.height] }
-        let snapshot = ["target":values(window.frame),"overlay":values(overlay),"visible":values(NSScreen.screens[0].visibleFrame)]
+        let presentation = app.currentSystemPresentationOptions
+        let snapshot: [String:Any] = ["target":values(window.frame),"overlay":values(overlay),"visible":values(NSScreen.screens[0].visibleFrame),
+            "screen":values(NSScreen.screens[0].frame),"targetFullscreen":window.styleMask.contains(.fullScreen),
+            "presentation":presentation.rawValue,"targetActive":app.isActive,
+            "layer":info[kCGWindowLayer as String] ?? 0,
+            "barsHidden":(presentation.contains(.autoHideMenuBar) || presentation.contains(.hideMenuBar)) && (presentation.contains(.autoHideDock) || presentation.contains(.hideDock))]
         try? JSONSerialization.data(withJSONObject: snapshot).write(to: URL(fileURLWithPath: ${JSON.stringify(probeFile)}),options: .atomic)
     }
 }
@@ -155,12 +160,14 @@ app.run()
     await delay(500);
     await fs.rm(probeFile, { force: true });
     await launchFixture();
+    await until(() => starts() === 3);
+    assert.match(log.split('handoff complete')[2], /animation started frame=.* fullscreen=yes/, 'Saved fullscreen must be retained before the target restores its fullscreen Space');
     await until(async () => {
       try {
         const saved = JSON.parse(await fs.readFile(placementFile, 'utf8'));
         const probe = JSON.parse(await fs.readFile(probeFile, 'utf8'));
-        return saved.fullScreen && probe.target[0] === 0 && probe.target[1] === 0
-          && JSON.stringify(probe.overlay) === JSON.stringify(probe.target);
+        return saved.fullScreen && probe.targetFullscreen && probe.layer > 24 && probe.barsHidden
+          && JSON.stringify(probe.overlay) === JSON.stringify(probe.screen);
       } catch { return false; }
     }, 8000);
     await until(() => finishes() === 3);

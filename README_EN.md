@@ -9,7 +9,7 @@
 <br>
 
 ![macOS](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.4.1-167DAD)
+![Version](https://img.shields.io/badge/version-2.4.3-167DAD)
 ![Swift](https://img.shields.io/badge/Swift-AppKit-F05138?logo=swift&logoColor=white)
 ![Rendering](https://img.shields.io/badge/Canvas-Vector-25855A)
 
@@ -70,7 +70,7 @@ Open Codex normally, or use the installed launcher or its desktop shortcut.
 - **Replay manually:** while Codex is running, choose `Play welcome Jay` from the sparkle menu bar item.
 - **Quit Codex:** close the animation and remove the menu bar item; the background listener waits for the next launch.
 
-Normal windows use native macOS corners; maximized windows match the work area; system fullscreen uses the saved display. During startup, the animation also matches the actual restored window to correct delayed maximization.
+Normal windows use native macOS corners; maximized windows match the work area. Fullscreen playback covers the entire display, including the menu bar, Dock, and notch safe area. It temporarily auto-hides system bars and restores the original presentation options on completion or skip. Remembered fullscreen is retained while Codex restores its fullscreen Space, rather than following its temporary normal window.
 
 ## FAQ
 

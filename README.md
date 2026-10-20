@@ -9,7 +9,7 @@
 <br>
 
 ![macOS](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.4.1-167DAD)
+![Version](https://img.shields.io/badge/version-2.4.3-167DAD)
 ![Swift](https://img.shields.io/badge/Swift-AppKit-F05138?logo=swift&logoColor=white)
 ![Rendering](https://img.shields.io/badge/Canvas-Vector-25855A)
 
@@ -70,7 +70,7 @@ zsh scripts/install.sh
 - **手动重播**：Codex 运行时，在菜单栏闪光图标中选择 `Play welcome Jay`。
 - **退出 Codex**：动画和菜单栏图标同步关闭，后台监听等待下次启动。
 
-普通窗口使用 macOS 原生圆角；铺满窗口匹配桌面可用区域；系统全屏匹配对应显示器。启动时也会校准实际窗口，避免恢复铺满时偏移。
+普通窗口使用 macOS 原生圆角；铺满窗口匹配桌面可用区域；系统全屏覆盖整块显示器，包括菜单栏、Dock 和刘海安全区域。全屏播放时临时自动隐藏菜单栏和 Dock，结束或跳过后恢复原来的显示选项。启动恢复全屏期间保留上次的全屏状态，避免被临时普通窗口降级为填充。
 
 ## 常见问题
 

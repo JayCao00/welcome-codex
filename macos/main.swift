@@ -76,7 +76,7 @@ final class WindowMemory {
             return (frame,screen,full)
         }
         guard let (frame,screen,fullScreen) = candidates.first else { return nil }
-        return WindowPlacement(frame: frame,screenFrame: screen.frame,displayID: WindowPlacement.displayID(screen),fullScreen: fullScreen)
+        return WindowPlacement(frame: fullScreen ? screen.frame : frame,screenFrame: screen.frame,displayID: WindowPlacement.displayID(screen),fullScreen: fullScreen)
     }
 
     func remember(_ placement: WindowPlacement) {
@@ -111,6 +111,7 @@ final class SplashWindow: NSWindow {
         isRestorable = false
         backgroundColor = .black; isOpaque = true
         hasShadow = !fullScreen
+        level = fullScreen ? NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue+1) : .floating
         setFrame(frame,display: false)
     }
 
@@ -121,6 +122,7 @@ final class SplashWindow: NSWindow {
             standardWindowButton(button)?.isHidden = true
         }
         hasShadow = !placement.fullScreen
+        level = placement.fullScreen ? NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue+1) : .floating
         setFrame(placement.frame,display: true)
     }
 }
@@ -140,6 +142,22 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
     var splashGeometryTimer: Timer?
     var splashPlacement: WindowPlacement?
     var pendingPlacement: WindowPlacement?
+    var awaitingFullscreenRestore = false
+    var previousPresentationOptions: NSApplication.PresentationOptions?
+
+    func presentFullscreen(_ fullScreen: Bool) {
+        if fullScreen {
+            if previousPresentationOptions == nil { previousPresentationOptions = app.presentationOptions }
+            app.presentationOptions = [.autoHideMenuBar,.autoHideDock]
+        } else if let previous = previousPresentationOptions {
+            app.presentationOptions = previous
+            previousPresentationOptions = nil
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        presentFullscreen(false)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         app.setActivationPolicy(.accessory)
@@ -253,7 +271,10 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         let running = target ?? NSWorkspace.shared.runningApplications.first {
             !$0.isTerminated && $0.bundleURL?.standardizedFileURL == targetURL.standardizedFileURL
         }
-        let placement = running.flatMap { windowMemory.livePlacement($0) } ?? windowMemory.placement()
+        let remembered = windowMemory.placement()
+        let live = running.flatMap { windowMemory.livePlacement($0) }
+        // A cold launch briefly exposes normal bounds before restoring its Space.
+        let placement = remembered?.fullScreen == true ? remembered : (live ?? remembered)
         if !preview { target = running }
         let frame = placement?.frame ?? screen.visibleFrame.insetBy(dx: screen.visibleFrame.width*0.1,dy: screen.visibleFrame.height*0.1)
         let fullScreen = placement?.fullScreen ?? false
@@ -268,7 +289,6 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         }
         active = true; finishing = false
         let win = SplashWindow(frame: frame,fullScreen: fullScreen)
-        win.level = .floating
         win.collectionBehavior = [.canJoinAllSpaces,.fullScreenAuxiliary]
         win.isReleasedWhenClosed = false
         let configuration = WKWebViewConfiguration()
@@ -281,12 +301,14 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         win.contentView = view
         window = win; webView = view
         splashPlacement = placement; pendingPlacement = nil
+        awaitingFullscreenRestore = fullScreen
         splashGeometryTimer = Timer.scheduledTimer(withTimeInterval: 0.1,repeats: true) { [weak self] _ in
             self?.matchTargetWindow()
         }
         view.loadFileURL(scene,allowingReadAccessTo: scene.deletingLastPathComponent())
         win.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
+        presentFullscreen(fullScreen)
         // AppKit can reposition a newly presented titled window. Reapply the
         // target's outer frame after presentation so no sidebar is exposed.
         win.setFrame(frame,display: true)
@@ -318,7 +340,13 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         // do not make the animation follow every step of a window transition.
         defer { pendingPlacement = placement }
         guard placement == pendingPlacement else { return }
+        if awaitingFullscreenRestore {
+            guard placement.fullScreen else { return }
+            awaitingFullscreenRestore = false
+        }
         windowMemory.remember(placement)
+        if placement.fullScreen && running.isActive { app.activate(ignoringOtherApps: true) }
+        presentFullscreen(placement.fullScreen)
         guard placement != splashPlacement || window?.frame != placement.frame else { return }
         window?.match(placement)
         splashPlacement = placement
@@ -342,6 +370,7 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         },completionHandler: {
             self.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "boot")
             self.window?.orderOut(nil); self.window = nil; self.webView = nil
+            self.presentFullscreen(false)
             self.active = false
             if self.lockFile >= 0 { flock(self.lockFile,LOCK_UN); close(self.lockFile); self.lockFile = -1 }
             NSLog("Welcome Jay: handoff complete")

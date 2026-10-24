@@ -5,7 +5,26 @@
   const ctx = canvas.getContext('2d', { alpha: false });
   const sceneDuration = 10.2, playbackRate = 0.8;
   const duration = Number((sceneDuration / playbackRate).toFixed(3));
-  const palette = ['#ff516b', '#ff943c', '#ffdb36', '#65d99b', '#23c5dc', '#6487f4', '#ac6ce8', '#ed74b5', '#ff776b'];
+  const appearanceMedia = matchMedia('(prefers-color-scheme: dark)');
+  const themes = {
+    light: {
+      background: '#ffffff',
+      // Keep the rainbow vivid on white, with clear orange/yellow and saturated greens.
+      palette: ['#ff315d', '#ff861c', '#f2bf00', '#28c578', '#00b6d3', '#4e7cff', '#a15af2', '#ee51b0', '#ff6258'],
+      reflection: '#ffffff', shine: .08
+    },
+    dark: {
+      background: '#181818',
+      palette: ['#ff516b', '#ff943c', '#ffdb36', '#65d99b', '#23c5dc', '#6487f4', '#ac6ce8', '#ed74b5', '#ff776b'],
+      reflection: '#d8f5ff', shine: .16
+    }
+  };
+  // The optional query is for inspecting both themes without changing macOS settings.
+  const requestedAppearance = new URLSearchParams(location.search).get('appearance');
+  const appearanceOverride = ['light', 'dark'].includes(requestedAppearance) ? requestedAppearance : null;
+  let appearance = appearanceOverride || (appearanceMedia.matches ? 'dark' : 'light');
+  let theme = themes[appearance], palette = theme.palette;
+  document.documentElement.dataset.appearance = appearance;
   let materialTime = 0;
   const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
   const mix = (a, b, t) => a + (b - a) * t;
@@ -95,7 +114,7 @@
     const reflection = context.createLinearGradient(glintX-180,260,glintX+180,640);
     reflection.addColorStop(0,'#ffffff00');
     reflection.addColorStop(.44,'#ffffff00');
-    reflection.addColorStop(.58,'#d8f5ff');
+    reflection.addColorStop(.58,theme.reflection);
     reflection.addColorStop(.78,'#ffffff00');
     reflection.addColorStop(1,'#ffffff00');
     return reflection;
@@ -104,12 +123,14 @@
     context.save();
     context.lineCap = 'round'; context.lineJoin = 'round';
     context.strokeStyle = color; context.lineWidth = width; context.stroke(path);
-    context.globalAlpha = .16; context.strokeStyle = reflectionInk(context);
+    context.globalAlpha = theme.shine; context.strokeStyle = reflectionInk(context);
     context.stroke(path);
     context.restore();
   }
   const cx = 800, cy = 450, markSize = 302;
-  const silhouette = new Path2D("M14.949 6.547a3.94 3.94 0 0 0-.348-3.273 4.11 4.11 0 0 0-4.4-1.934A4.1 4.1 0 0 0 8.423.2 4.15 4.15 0 0 0 6.305.086a4.1 4.1 0 0 0-1.891.948 4.04 4.04 0 0 0-1.158 1.753 4.1 4.1 0 0 0-1.563.679A4 4 0 0 0 .554 4.72a3.99 3.99 0 0 0 .502 4.731 3.94 3.94 0 0 0 .346 3.274 4.11 4.11 0 0 0 4.402 1.933c.382.425.852.764 1.377.995.526.231 1.095.35 1.67.346 1.78.002 3.358-1.132 3.901-2.804a4.1 4.1 0 0 0 1.563-.68 4 4 0 0 0 1.14-1.253 3.99 3.99 0 0 0-.506-4.716m-6.097 8.406a3.05 3.05 0 0 1-1.945-.694l.096-.054 3.23-1.838a.53.53 0 0 0 .265-.455v-4.49l1.366.778q.02.011.025.035v3.722c-.003 1.653-1.361 2.992-3.037 2.996m-6.53-2.75a2.95 2.95 0 0 1-.36-2.01l.095.057L5.29 12.09a.53.53 0 0 0 .527 0l3.949-2.246v1.555a.05.05 0 0 1-.022.041L6.473 13.3c-1.454.826-3.311.335-4.15-1.098m-.85-6.94A3.02 3.02 0 0 1 3.07 3.949v3.785a.51.51 0 0 0 .262.451l3.93 2.237-1.366.779a.05.05 0 0 1-.048 0L2.585 9.342a2.98 2.98 0 0 1-1.113-4.094zm11.216 2.571L8.747 5.576l1.362-.776a.05.05 0 0 1 .048 0l3.265 1.86a3 3 0 0 1 1.173 1.207 2.96 2.96 0 0 1-.27 3.2 3.05 3.05 0 0 1-1.36.997V8.279a.52.52 0 0 0-.276-.445m1.36-2.015-.097-.057-3.226-1.855a.53.53 0 0 0-.53 0L6.249 6.153V4.598a.04.04 0 0 1 .019-.04L9.533 2.7a3.07 3.07 0 0 1 3.257.139c.474.325.843.778 1.066 1.303.223.526.289 1.103.191 1.664zM5.503 8.575 4.139 7.8a.05.05 0 0 1-.026-.037V4.049c0-.57.166-1.127.476-1.607s.752-.864 1.275-1.105a3.08 3.08 0 0 1 3.234.41l-.096.054-3.23 1.838a.53.53 0 0 0-.265.455zm.742-1.577 1.758-1 1.762 1v2l-1.755 1-1.762-1z");
+  // Close every contour explicitly: fill() closes implicitly, stroke() does not.
+  // Absolute moves keep each contour in place when the preceding one closes.
+  const silhouette = new Path2D("M14.949 6.547a3.94 3.94 0 0 0-.348-3.273 4.11 4.11 0 0 0-4.4-1.934A4.1 4.1 0 0 0 8.423.2 4.15 4.15 0 0 0 6.305.086a4.1 4.1 0 0 0-1.891.948 4.04 4.04 0 0 0-1.158 1.753 4.1 4.1 0 0 0-1.563.679A4 4 0 0 0 .554 4.72a3.99 3.99 0 0 0 .502 4.731 3.94 3.94 0 0 0 .346 3.274 4.11 4.11 0 0 0 4.402 1.933c.382.425.852.764 1.377.995.526.231 1.095.35 1.67.346 1.78.002 3.358-1.132 3.901-2.804a4.1 4.1 0 0 0 1.563-.68 4 4 0 0 0 1.14-1.253 3.99 3.99 0 0 0-.506-4.716ZM8.852 14.952a3.05 3.05 0 0 1-1.945-.694l.096-.054 3.23-1.838a.53.53 0 0 0 .265-.455v-4.49l1.366.778q.02.011.025.035v3.722c-.003 1.653-1.361 2.992-3.037 2.996ZM2.322 12.202a2.95 2.95 0 0 1-.36-2.01l.095.057L5.29 12.09a.53.53 0 0 0 .527 0l3.949-2.246v1.555a.05.05 0 0 1-.022.041L6.473 13.3c-1.454.826-3.311.335-4.15-1.098ZM1.473 5.262A3.02 3.02 0 0 1 3.07 3.949v3.785a.51.51 0 0 0 .262.451l3.93 2.237-1.366.779a.05.05 0 0 1-.048 0L2.585 9.342a2.98 2.98 0 0 1-1.113-4.094ZM12.689 7.833L8.747 5.576l1.362-.776a.05.05 0 0 1 .048 0l3.265 1.86a3 3 0 0 1 1.173 1.207 2.96 2.96 0 0 1-.27 3.2 3.05 3.05 0 0 1-1.36.997V8.279a.52.52 0 0 0-.276-.445ZM14.049 5.819l-.097 -.057 -3.226 -1.855a.53.53 0 0 0-.53 0L6.249 6.153V4.598a.04.04 0 0 1 .019-.04L9.533 2.7a3.07 3.07 0 0 1 3.257.139c.474.325.843.778 1.066 1.303.223.526.289 1.103.191 1.664ZM5.503 8.575L4.139 7.8a.05.05 0 0 1-.026-.037V4.049c0-.57.166-1.127.476-1.607s.752-.864 1.275-1.105a3.08 3.08 0 0 1 3.234.41l-.096.054-3.23 1.838a.53.53 0 0 0-.265.455ZM6.245 6.998l1.758 -1 1.762 1v2l-1.755 1-1.762-1z");
   const inkLayer = document.createElement('canvas'), clipLayer = document.createElement('canvas');
   const inkContext = inkLayer.getContext('2d'), clipContext = clipLayer.getContext('2d');
   function roundedLine(points) {
@@ -159,7 +180,7 @@
     inkContext.globalCompositeOperation = 'source-in';
     inkContext.fillStyle = ink; inkContext.fillRect(-4000,-4000,8000,8000);
     inkContext.globalCompositeOperation = 'source-atop';
-    inkContext.globalAlpha = .16; inkContext.fillStyle = reflectionInk(inkContext);
+    inkContext.globalAlpha = theme.shine; inkContext.fillStyle = reflectionInk(inkContext);
     inkContext.fillRect(-4000,-4000,8000,8000);
     inkContext.globalAlpha = 1; inkContext.globalCompositeOperation = 'source-over';
     ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(inkLayer,0,0); ctx.restore();
@@ -209,7 +230,7 @@
     const t = elapsed * playbackRate;
     materialTime = t < 2.72 ? t : t < 3.27 ? 2.72 : t-.55;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = theme.background; ctx.fillRect(0, 0, canvas.width, canvas.height);
     const fit = Math.min(viewport.width / 1600, viewport.height / 900);
     const ratio = viewport.ratio;
     ctx.setTransform(fit*ratio, 0, 0, fit*ratio, (viewport.width - 1600*fit)/2*ratio, (viewport.height - 900*fit)/2*ratio);
@@ -226,6 +247,7 @@
     if (t >= 6.65) flowingKnot(t,pan);
     currentTime = elapsed;
     canvas.dataset.time = elapsed.toFixed(3);
+    canvas.dataset.appearance = appearance;
     canvas.dataset.stage = t < 2.72 ? 'welcome' : t < 3.27 ? 'pause' : t < 5 ? 'jay' : t < 5.3 ? 'title' : t < 6.65 ? 'ribbon' : t < 8.7 ? 'forming' : t < 8.95 ? 'mark' : 'zoom';
   }
   let currentTime = 0, playing = true, start = performance.now(), frame = 0, notified = false;
@@ -253,13 +275,26 @@
     renderAt(time) { playing = false; render(time); },
     get time() { return currentTime; },
     get stage() { return canvas.dataset.stage; },
+    get appearance() { return appearance; },
     get dimensions() { return { ...viewport, pixelWidth: canvas.width, pixelHeight: canvas.height }; }
   });
   addEventListener('resize', resize);
+  appearanceMedia.addEventListener('change', () => {
+    if (appearanceOverride) return;
+    appearance = appearanceMedia.matches ? 'dark' : 'light';
+    theme = themes[appearance]; palette = theme.palette;
+    document.documentElement.dataset.appearance = appearance;
+    render(currentTime);
+  });
   addEventListener('pagehide', () => cancelAnimationFrame(frame));
   addEventListener('keydown', event => {
     if (event.code === 'Space') { event.preventDefault(); if (playing) window.WelcomeJay.pause(); else window.WelcomeJay.play(); }
   });
-  resize(); requestAnimationFrame(tick);
+  resize();
+  const reviewTime = new URLSearchParams(location.search).get('time');
+  if (reviewTime !== null && reviewTime.trim() !== '' && Number.isFinite(Number(reviewTime))) {
+    playing = false; render(Number(reviewTime));
+  }
+  requestAnimationFrame(tick);
   window.webkit?.messageHandlers?.boot?.postMessage('ready');
 })();

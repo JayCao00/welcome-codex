@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
   const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
   try {
     for (const [name, viewport, ratio] of [['desktop', { width: 1440, height: 900 }, 2], ['mobile', { width: 390, height: 844 }, 3], ['retina', { width: 2560, height: 1440 }, 2]]) {
-      const page = await browser.newPage({ viewport, deviceScaleFactor: ratio });
+      const page = await browser.newPage({ viewport, deviceScaleFactor: ratio, colorScheme: 'dark' });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(pathToFileURL(path.resolve('preview.html')).href);

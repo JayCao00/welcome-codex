@@ -10,6 +10,12 @@ let app = NSApplication.shared
 let arguments = Set(CommandLine.arguments.dropFirst())
 let watching = arguments.contains("--watch")
 let preview = arguments.contains("--preview")
+// Match the canvas before WebKit paints its first frame, including appearance changes.
+let welcomeBackground = NSColor(name: NSColor.Name("WelcomeBackground")) { appearance in
+    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(srgbRed: 24.0/255, green: 24.0/255, blue: 24.0/255, alpha: 1)
+        : .white
+}
 
 struct WindowPlacement: Codable, Equatable {
     let frame: CGRect
@@ -109,7 +115,7 @@ final class SplashWindow: NSWindow {
         }
         isMovable = false
         isRestorable = false
-        backgroundColor = .black; isOpaque = true
+        backgroundColor = welcomeBackground; isOpaque = true
         hasShadow = !fullScreen
         level = fullScreen ? NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue+1) : .floating
         setFrame(frame,display: false)
@@ -160,6 +166,9 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Preview overrides affect this process only; normal launches follow macOS.
+        if preview && arguments.contains("--appearance=dark") { app.appearance = NSAppearance(named: .darkAqua) }
+        if preview && arguments.contains("--appearance=light") { app.appearance = NSAppearance(named: .aqua) }
         app.setActivationPolicy(.accessory)
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self,selector: #selector(applicationChanged(_:)),name: NSWorkspace.didTerminateApplicationNotification,object: nil)
@@ -295,6 +304,7 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(self,name: "boot")
         let view = WKWebView(frame: CGRect(origin: .zero,size: frame.size),configuration: configuration)
+        view.underPageBackgroundColor = welcomeBackground
         view.autoresizingMask = [.width,.height]
         view.setValue(false,forKey: "drawsBackground")
         view.navigationDelegate = self
@@ -380,7 +390,11 @@ final class Launcher: NSObject, NSApplicationDelegate, WKScriptMessageHandler, W
 
     func userContentController(_ userContentController: WKUserContentController,didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,message.webView === webView,let state = message.body as? String else { return }
-        if state == "ready" { NSLog("Welcome Jay: vector scene ready") }
+        if state == "ready" {
+            webView?.evaluateJavaScript("window.WelcomeJay.appearance") { result, _ in
+                NSLog("Welcome Jay: vector scene ready appearance=%@", result as? String ?? "unknown")
+            }
+        }
         if state == "complete" { finish() }
     }
 
